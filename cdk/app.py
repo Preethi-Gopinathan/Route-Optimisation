@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 import aws_cdk as cdk
-from flask_ebs_stack import FlaskEbsStack
+import os
+from route_optimization_stack import RouteOptimizationStack
 
 app = cdk.App()
-FlaskEbsStack(app, "FlaskEbsStack")
+
+RouteOptimizationStack(
+    app,
+    "RouteOptimizationStack",
+    env=cdk.Environment(
+        account=os.getenv("CDK_DEFAULT_ACCOUNT"),
+        region=os.getenv("CDK_DEFAULT_REGION")
+    )
+)
+
 app.synth()
