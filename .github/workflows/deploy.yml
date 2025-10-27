@@ -3,41 +3,39 @@ name: Deploy Flask App to Elastic Beanstalk via CDK
 on:
   push:
     branches:
-      - main  # Deploy only when main is pushed
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout the repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup Python (for CDK app)
-      - name: Set up Python
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      # 3️⃣ Install dependencies
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt || echo "No Flask runtime deps for CDK"
-          pip install aws-cdk-lib constructs boto3
+          pip install -r requirements.txt || echo "No Flask deps"
+          cd cdk
+          pip install -r requirements.txt || echo "No CDK deps"
+          npm install -g aws-cdk
 
-      # 4️⃣ Install AWS CDK CLI globally
-      - name: Install AWS CDK CLI
-        run: npm install -g aws-cdk
-
-      # 5️⃣ Build your Flask app zip
       - name: Build Flask zip
         run: |
           chmod +x build.sh
           ./build.sh
 
-      # 6️⃣ Configure AWS credentials (from GitHub secrets)
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -45,9 +43,26 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # 7️⃣ Deploy using CDK
-      - name: Deploy CDK Stack
-        working-directory: ./cdk
+      # 🧱 Bootstrap CDK (only runs if not bootstrapped yet)
+      - name: Bootstrap CDK
+        working-directory: cdk
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
         run: |
-          cdk bootstrap
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "Bootstrapping CDK for account: $AWS_ACCOUNT_ID"
+          cdk bootstrap aws://$AWS_ACCOUNT_ID/${{ secrets.AWS_REGION }}
+
+      # 🚀 Deploy stack
+      - name: Deploy CDK stack
+        working-directory: cdk
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "Deploying to account: $AWS_ACCOUNT_ID"
           cdk deploy --require-approval never
